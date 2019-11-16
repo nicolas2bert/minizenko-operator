@@ -1,0 +1,11 @@
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: minizenko-operator
+subjects:
+- kind: ServiceAccount
+  name: minizenko-operator
+roleRef:
+  kind: Role
+  name: minizenko-operator
+  apiGroup: rbac.authorization.k8s.io
