@@ -1,0 +1,7 @@
+apiVersion: minizenko.zenko.io/v1alpha1
+kind: Minizenko
+metadata:
+  name: example-minizenko
+spec:
+  # Add fields here
+  size: 3

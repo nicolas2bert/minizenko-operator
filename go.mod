@@ -1,6 +1,7 @@
 module github.com/example-inc/minizenko-operator
 
 require (
+	github.com/NYTimes/gziphandler v1.0.1 // indirect
 	github.com/operator-framework/operator-sdk v0.12.1-0.20191115214412-4f04f43333a2
 	github.com/spf13/pflag v1.0.3
 	k8s.io/api v0.0.0-20190612125737-db0771252981
