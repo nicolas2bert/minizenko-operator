@@ -65,10 +65,17 @@ func schema_pkg_apis_minizenko_v1alpha1_MinizenkoSpec(ref common.ReferenceCallba
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "MinizenkoSpec defines the desired state of Minizenko",
-				Properties:  map[string]spec.Schema{},
+				Properties: map[string]spec.Schema{
+					"cloudServer": {
+						SchemaProps: spec.SchemaProps{
+							Ref: ref("github.com/example-inc/minizenko-operator/pkg/apis/minizenko/v1alpha1.CloudSpecServer"),
+						},
+					},
+				},
 			},
 		},
-		Dependencies: []string{},
+		Dependencies: []string{
+			"github.com/example-inc/minizenko-operator/pkg/apis/minizenko/v1alpha1.CloudSpecServer"},
 	}
 }
 

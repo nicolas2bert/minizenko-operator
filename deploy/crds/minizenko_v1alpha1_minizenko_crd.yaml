@@ -28,6 +28,12 @@ spec:
         metadata:
           type: object
         spec:
+          properties:
+            cloudServer:
+              properties:
+                remoteManagementDisable:
+                  type: boolean
+              type: object
           type: object
         status:
           type: object
