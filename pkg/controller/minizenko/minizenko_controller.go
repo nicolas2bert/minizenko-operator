@@ -2,6 +2,10 @@ package minizenko
 
 import (
 	"context"
+	"fmt"
+	"strconv"
+
+	appsv1 "k8s.io/api/apps/v1"
 
 	minizenkov1alpha1 "github.com/example-inc/minizenko-operator/pkg/apis/minizenko/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
@@ -53,7 +57,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 
 	// TODO(user): Modify this to be the types you create that are owned by the primary resource
 	// Watch for changes to secondary resource Pods and requeue the owner Minizenko
-	err = c.Watch(&source.Kind{Type: &corev1.Pod{}}, &handler.EnqueueRequestForOwner{
+	err = c.Watch(&source.Kind{Type: &appsv1.Deployment{}}, &handler.EnqueueRequestForOwner{
 		IsController: true,
 		OwnerType:    &minizenkov1alpha1.Minizenko{},
 	})
@@ -101,51 +105,77 @@ func (r *ReconcileMinizenko) Reconcile(request reconcile.Request) (reconcile.Res
 	}
 
 	// Define a new Pod object
-	pod := newPodForCR(instance)
+	deployment := newDeploymentForCR(instance)
 
 	// Set Minizenko instance as the owner and controller
-	if err := controllerutil.SetControllerReference(instance, pod, r.scheme); err != nil {
+	if err := controllerutil.SetControllerReference(instance, deployment, r.scheme); err != nil {
 		return reconcile.Result{}, err
 	}
 
-	// Check if this Pod already exists
-	found := &corev1.Pod{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Name: pod.Name, Namespace: pod.Namespace}, found)
+	// Check if this Deployment already exists
+	found := &appsv1.Deployment{}
+	err = r.client.Get(context.TODO(), types.NamespacedName{Name: deployment.Name, Namespace: deployment.Namespace}, found)
 	if err != nil && errors.IsNotFound(err) {
-		reqLogger.Info("Creating a new Pod", "Pod.Namespace", pod.Namespace, "Pod.Name", pod.Name)
-		err = r.client.Create(context.TODO(), pod)
+		reqLogger.Info("Creating a new Deployment", "Deployment.Namespace", deployment.Namespace, "Deployment.Name", deployment.Name)
+		err = r.client.Create(context.TODO(), deployment)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
 
-		// Pod created successfully - don't requeue
+		// Deployment created successfully - don't requeue
 		return reconcile.Result{}, nil
 	} else if err != nil {
 		return reconcile.Result{}, err
 	}
 
-	// Pod already exists - don't requeue
-	reqLogger.Info("Skip reconcile: Pod already exists", "Pod.Namespace", found.Namespace, "Pod.Name", found.Name)
+	// Deployment already exists - don't requeue
+	reqLogger.Info("Skip reconcile:  Deployment already exists", "Deployment.Namespace", found.Namespace, "Deployment.Name", found.Name)
 	return reconcile.Result{}, nil
 }
 
 // newPodForCR returns a busybox pod with the same name/namespace as the cr
-func newPodForCR(cr *minizenkov1alpha1.Minizenko) *corev1.Pod {
+func newDeploymentForCR(cr *minizenkov1alpha1.Minizenko) *appsv1.Deployment {
 	labels := map[string]string{
-		"app": cr.Name,
+		"labelName":     "cloudserver",
+		"labelInstance": cr.Name,
+		"labelManager":  "my-operator",
 	}
-	return &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      cr.Name + "-pod",
-			Namespace: cr.Namespace,
-			Labels:    labels,
-		},
-		Spec: corev1.PodSpec{
-			Containers: []corev1.Container{
-				{
-					Name:    "busybox",
-					Image:   "busybox",
-					Command: []string{"sleep", "3600"},
+
+	isManagement := cr.Spec.CloudServer.RemoteManagementDisable
+	fmt.Printf("\n isManagement!!!: %v \n", isManagement)
+
+	// change it to cr.
+	replicas := int32(2)
+
+	objectMeta := metav1.ObjectMeta{
+		Name:      cr.Name + "-cloudserver",
+		Namespace: cr.Namespace,
+		Labels:    labels,
+	}
+
+	return &appsv1.Deployment{
+		ObjectMeta: objectMeta,
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &replicas,
+			Selector: &metav1.LabelSelector{
+				MatchLabels: labels,
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: objectMeta,
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{{
+						Image: "zenko/cloudserver",
+						Name:  "cloudserver",
+						// Command: []string{"memcached", "-m=64", "-o", "modern", "-v"},
+						Ports: []corev1.ContainerPort{{
+							ContainerPort: 8000,
+							Name:          "cloudserverport",
+						}},
+						Env: []corev1.EnvVar{{
+							Name:  "REMOTE_MANAGEMENT_DISABLE",
+							Value: strconv.FormatBool(isManagement),
+						}},
+					}},
 				},
 			},
 		},

@@ -4,4 +4,5 @@ metadata:
   name: example-minizenko
 spec:
   # Add fields here
-  size: 3
+  cloudServer:
+    remoteManagementDisable: true
