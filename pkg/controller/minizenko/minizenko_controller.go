@@ -2,7 +2,6 @@ package minizenko
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -65,6 +64,14 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
+	err = c.Watch(&source.Kind{Type: &corev1.Service{}}, &handler.EnqueueRequestForOwner{
+		IsController: true,
+		OwnerType:    &minizenkov1alpha1.Minizenko{},
+	})
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -104,8 +111,8 @@ func (r *ReconcileMinizenko) Reconcile(request reconcile.Request) (reconcile.Res
 		return reconcile.Result{}, err
 	}
 
-	// Define a new Pod object
-	deployment := newDeploymentForCR(instance)
+	// Define a new CloudServer Deployment object
+	deployment := newCloudServerDeploymentForCR(instance)
 
 	// Set Minizenko instance as the owner and controller
 	if err := controllerutil.SetControllerReference(instance, deployment, r.scheme); err != nil {
@@ -113,8 +120,8 @@ func (r *ReconcileMinizenko) Reconcile(request reconcile.Request) (reconcile.Res
 	}
 
 	// Check if this Deployment already exists
-	found := &appsv1.Deployment{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Name: deployment.Name, Namespace: deployment.Namespace}, found)
+	foundDeployment := &appsv1.Deployment{}
+	err = r.client.Get(context.TODO(), types.NamespacedName{Name: deployment.Name, Namespace: deployment.Namespace}, foundDeployment)
 	if err != nil && errors.IsNotFound(err) {
 		reqLogger.Info("Creating a new Deployment", "Deployment.Namespace", deployment.Namespace, "Deployment.Name", deployment.Name)
 		err = r.client.Create(context.TODO(), deployment)
@@ -128,13 +135,63 @@ func (r *ReconcileMinizenko) Reconcile(request reconcile.Request) (reconcile.Res
 		return reconcile.Result{}, err
 	}
 
-	// Deployment already exists - don't requeue
-	reqLogger.Info("Skip reconcile:  Deployment already exists", "Deployment.Namespace", found.Namespace, "Deployment.Name", found.Name)
+	// Define a new CloudServer Service object
+	service := newServiceDeploymentForCR(instance)
+
+	// Set Minizenko instance as the owner and controller
+	if err := controllerutil.SetControllerReference(instance, service, r.scheme); err != nil {
+		return reconcile.Result{}, err
+	}
+
+	// Check if this CloudServer Service already exists
+	foundService := &corev1.Service{}
+	err = r.client.Get(context.TODO(), types.NamespacedName{Name: service.Name, Namespace: service.Namespace}, foundService)
+	if err != nil && errors.IsNotFound(err) {
+		reqLogger.Info("Creating a new CloudServer Service", "Service.Namespace", service.Namespace, "Service.Name", service.Name)
+		err = r.client.Create(context.TODO(), service)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+		return reconcile.Result{}, nil
+	} else if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	reqLogger.Info("Skip reconcile")
 	return reconcile.Result{}, nil
 }
 
+func newServiceDeploymentForCR(cr *minizenkov1alpha1.Minizenko) *corev1.Service {
+	labels := map[string]string{
+		"labelName":     "cloudserver-service",
+		"labelInstance": cr.Name,
+		"labelManager":  "my-operator",
+	}
+	objectMeta := metav1.ObjectMeta{
+		Name:      cr.Name + "-cloudserver-service",
+		Namespace: cr.Namespace,
+		Labels:    labels,
+	}
+	return &corev1.Service{
+		ObjectMeta: objectMeta,
+		Spec: corev1.ServiceSpec{
+			Selector: map[string]string{
+				"labelName":     "cloudserver",
+				"labelInstance": cr.Name,
+				"labelManager":  "my-operator",
+			},
+			Type: corev1.ServiceTypeNodePort,
+			Ports: []corev1.ServicePort{
+				corev1.ServicePort{
+					Port: 8000,
+				},
+			},
+		},
+	}
+}
+
 // newPodForCR returns a busybox pod with the same name/namespace as the cr
-func newDeploymentForCR(cr *minizenkov1alpha1.Minizenko) *appsv1.Deployment {
+func newCloudServerDeploymentForCR(cr *minizenkov1alpha1.Minizenko) *appsv1.Deployment {
 	labels := map[string]string{
 		"labelName":     "cloudserver",
 		"labelInstance": cr.Name,
@@ -142,7 +199,6 @@ func newDeploymentForCR(cr *minizenkov1alpha1.Minizenko) *appsv1.Deployment {
 	}
 
 	isManagement := cr.Spec.CloudServer.RemoteManagementDisable
-	fmt.Printf("\n isManagement!!!: %v \n", isManagement)
 
 	// change it to cr.
 	replicas := int32(2)
